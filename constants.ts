@@ -1,4 +1,4 @@
-import { AssetType } from './types';
+import { AssetType, PtaxZone } from './types';
 
 export const ASSET_CONFIG = {
   [AssetType.WDO]: {
@@ -23,7 +23,7 @@ export const INITIAL_SETTINGS = {
   endTime: '17:00'
 };
 
-export const MOCK_PTAX_ZONES = [
+export const MOCK_PTAX_ZONES: PtaxZone[] = [
   { price: 0, type: 'ATTRACTION', probability: 'HIGH', timeLabel: 'PTAX 10:00' },
   { price: 0, type: 'NEUTRAL', probability: 'MEDIUM', timeLabel: 'PTAX 11:00' },
   { price: 0, type: 'DEFENSE', probability: 'HIGH', timeLabel: 'PTAX 12:00' },

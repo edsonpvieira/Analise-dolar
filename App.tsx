@@ -23,6 +23,7 @@ import SignalCard from './components/SignalCard';
 import RiskMonitor from './components/RiskMonitor';
 import PtaxPanel from './components/PtaxPanel';
 import SettingsPanel from './components/SettingsPanel';
+import ChartUploadPanel from './components/ChartUploadPanel';
 import { BrainCircuit, Play, Square, Info } from 'lucide-react';
 
 const App: React.FC = () => {
@@ -161,6 +162,8 @@ const App: React.FC = () => {
                 asset={settings.asset}
                 contracts={settings.contracts}
             />
+
+            <ChartUploadPanel />
 
             {/* AI Insight Section */}
             <div className="bg-profit-card border border-profit-border p-6 rounded-lg">
