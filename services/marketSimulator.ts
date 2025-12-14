@@ -1,4 +1,4 @@
-import { MarketData, MarketBias, TradeSignal, SignalType, AssetType } from "../types";
+import { MarketData, MarketBias, TradeSignal, SignalType, AssetType, TradingZones } from "../types";
 import { ASSET_CONFIG } from "../constants";
 
 // Helper to round to nearest tick
@@ -65,6 +65,29 @@ export const calculateBias = (data: MarketData): MarketBias => {
   if (Math.abs(distToVwap) < 3) return MarketBias.NEUTRAL; // Too close to VWAP
   
   return MarketBias.NEUTRAL;
+};
+
+export const calculateTradingZones = (data: MarketData, bias: MarketBias): TradingZones => {
+  let buyRegion, sellRegion, context;
+
+  if (bias === MarketBias.BULLISH) {
+    // Bullish: Buy near VWAP (Pullback), Sell near Highs (Breakout target)
+    buyRegion = { min: data.vwap - 2, max: data.vwap + 2, strength: 'ALTA' as const };
+    sellRegion = { min: data.high, max: data.high + 5, strength: 'MÉDIA' as const };
+    context = "Tendência de Alta - Priorize Pullbacks na VWAP";
+  } else if (bias === MarketBias.BEARISH) {
+    // Bearish: Sell near VWAP (Pullback), Buy near Lows (Target)
+    sellRegion = { min: data.vwap - 2, max: data.vwap + 2, strength: 'ALTA' as const };
+    buyRegion = { min: data.low - 5, max: data.low, strength: 'MÉDIA' as const };
+    context = "Tendência de Baixa - Venda repiques na VWAP";
+  } else {
+    // Neutral: Buy Lows, Sell Highs (Range)
+    buyRegion = { min: data.low, max: data.low + 3, strength: 'MÉDIA' as const };
+    sellRegion = { min: data.high - 3, max: data.high, strength: 'MÉDIA' as const };
+    context = "Mercado Lateral - Operar Extremos";
+  }
+
+  return { buyRegion, sellRegion, trendContext: context };
 };
 
 export const generateSignal = (

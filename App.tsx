@@ -5,7 +5,8 @@ import {
   TradeSignal, 
   PtaxZone, 
   RiskStatus, 
-  UserSettings 
+  UserSettings,
+  TradingZones
 } from './types';
 import { 
   INITIAL_SETTINGS, 
@@ -14,7 +15,8 @@ import {
 import { 
   generateMarketData, 
   calculateBias, 
-  generateSignal 
+  generateSignal,
+  calculateTradingZones
 } from './services/marketSimulator';
 import { getAnalystInsight } from './services/geminiService';
 
@@ -24,6 +26,7 @@ import RiskMonitor from './components/RiskMonitor';
 import PtaxPanel from './components/PtaxPanel';
 import SettingsPanel from './components/SettingsPanel';
 import ChartUploadPanel from './components/ChartUploadPanel';
+import RealTimeAnalysis from './components/RealTimeAnalysis';
 import { BrainCircuit, Play, Square, Info } from 'lucide-react';
 
 const App: React.FC = () => {
@@ -33,6 +36,7 @@ const App: React.FC = () => {
   const [signal, setSignal] = useState<TradeSignal | null>(null);
   const [ptaxZones, setPtaxZones] = useState<PtaxZone[]>(MOCK_PTAX_ZONES);
   const [settings, setSettings] = useState<UserSettings>(INITIAL_SETTINGS);
+  const [tradingZones, setTradingZones] = useState<TradingZones | null>(null);
   
   const [riskStatus, setRiskStatus] = useState<RiskStatus>({
     currentPnL: 0,
@@ -49,6 +53,7 @@ const App: React.FC = () => {
   useEffect(() => {
     const initialData = generateMarketData(null, settings.asset);
     setMarketData(initialData);
+    setTradingZones(calculateTradingZones(initialData, MarketBias.NEUTRAL));
     
     // Set some random PTAX levels based on initial price for realism
     const base = initialData.price;
@@ -72,6 +77,9 @@ const App: React.FC = () => {
           // Update Bias
           const newBias = calculateBias(newData);
           setBias(newBias);
+
+          // Update Trading Zones
+          setTradingZones(calculateTradingZones(newData, newBias));
 
           // Generate Signal (if none active)
           if (!signal) {
@@ -156,6 +164,10 @@ const App: React.FC = () => {
         
         {/* Left Column: Signals & Analysis */}
         <div className="lg:col-span-2 space-y-6">
+            
+            {/* NEW Real Time Analysis Panel */}
+            {tradingZones && <RealTimeAnalysis zones={tradingZones} currentPrice={marketData.price} />}
+
             <SignalCard 
                 signal={signal} 
                 isBlocked={riskStatus.isBlocked} 

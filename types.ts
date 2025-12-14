@@ -62,3 +62,9 @@ export interface RiskStatus {
   isBlocked: boolean;
   maxLossHit: boolean;
 }
+
+export interface TradingZones {
+  buyRegion: { min: number; max: number; strength: 'ALTA' | 'MÉDIA' | 'BAIXA' };
+  sellRegion: { min: number; max: number; strength: 'ALTA' | 'MÉDIA' | 'BAIXA' };
+  trendContext: string;
+}
