@@ -27,11 +27,18 @@ import PtaxPanel from './components/PtaxPanel';
 import SettingsPanel from './components/SettingsPanel';
 import ChartUploadPanel from './components/ChartUploadPanel';
 import RealTimeAnalysis from './components/RealTimeAnalysis';
+import RealTimeChart from './components/RealTimeChart'; // Import new chart
 import { BrainCircuit, Play, Square, Info } from 'lucide-react';
+
+// Helper for time formatting
+const formatTime = (date: Date) => {
+    return date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+};
 
 const App: React.FC = () => {
   // State
   const [marketData, setMarketData] = useState<MarketData | null>(null);
+  const [priceHistory, setPriceHistory] = useState<{time: string, price: number}[]>([]); // New history state
   const [bias, setBias] = useState<MarketBias>(MarketBias.NEUTRAL);
   const [signal, setSignal] = useState<TradeSignal | null>(null);
   const [ptaxZones, setPtaxZones] = useState<PtaxZone[]>(MOCK_PTAX_ZONES);
@@ -53,9 +60,9 @@ const App: React.FC = () => {
   useEffect(() => {
     const initialData = generateMarketData(null, settings.asset);
     setMarketData(initialData);
+    setPriceHistory([{ time: formatTime(new Date()), price: initialData.price }]); // Init history
     setTradingZones(calculateTradingZones(initialData, MarketBias.NEUTRAL));
     
-    // Set some random PTAX levels based on initial price for realism
     const base = initialData.price;
     setPtaxZones([
         { price: base + 15, type: 'DEFENSE', probability: 'HIGH', timeLabel: 'PTAX 10:00' },
@@ -81,6 +88,13 @@ const App: React.FC = () => {
           // Update Trading Zones
           setTradingZones(calculateTradingZones(newData, newBias));
 
+          // Update History
+          setPriceHistory(prevHist => {
+             const newHist = [...prevHist, { time: formatTime(new Date()), price: newData.price }];
+             if (newHist.length > 30) return newHist.slice(1); // Keep last 30 points
+             return newHist;
+          });
+
           // Generate Signal (if none active)
           if (!signal) {
              const newSignal = generateSignal(newData, newBias, settings.maxRiskPerTrade, settings.contracts, settings.asset);
@@ -92,7 +106,6 @@ const App: React.FC = () => {
                 const isWin = newData.price >= signal.targetFinal && signal.type === 'COMPRA' || newData.price <= signal.targetFinal && signal.type === 'VENDA';
                 // Reset signal after hit
                 setSignal(null);
-                // Note: In a real app we would track the trade execution here.
              }
           }
 
@@ -165,8 +178,15 @@ const App: React.FC = () => {
         {/* Left Column: Signals & Analysis */}
         <div className="lg:col-span-2 space-y-6">
             
-            {/* NEW Real Time Analysis Panel */}
-            {tradingZones && <RealTimeAnalysis zones={tradingZones} currentPrice={marketData.price} />}
+            {/* Real Time Analysis & Chart */}
+            <div className="flex flex-col gap-6">
+               {tradingZones && (
+                   <>
+                      <RealTimeAnalysis zones={tradingZones} currentPrice={marketData.price} />
+                      <RealTimeChart data={priceHistory} zones={tradingZones} currentData={marketData} />
+                   </>
+               )}
+            </div>
 
             <SignalCard 
                 signal={signal} 
