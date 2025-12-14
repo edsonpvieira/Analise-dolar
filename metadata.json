@@ -1,0 +1,5 @@
+{
+  "name": "TradeCopilot Pro",
+  "description": "A professional trading assistant for WDO/DOL futures, featuring real-time market bias analysis, PTAX zones, automatic risk management, and AI-powered insights.",
+  "requestFramePermissions": []
+}
