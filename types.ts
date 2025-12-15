@@ -26,6 +26,14 @@ export interface UserSettings {
   apiKey?: string; // For Gemini
 }
 
+export interface LiveSetupParams {
+  open: number;
+  high: number;
+  low: number;
+  vwap: number;
+  current: number;
+}
+
 export interface MarketData {
   price: number;
   open: number;

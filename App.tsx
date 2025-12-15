@@ -6,7 +6,8 @@ import {
   PtaxZone, 
   RiskStatus, 
   UserSettings,
-  TradingZones
+  TradingZones,
+  LiveSetupParams
 } from './types';
 import { 
   INITIAL_SETTINGS, 
@@ -16,7 +17,8 @@ import {
   generateMarketData, 
   calculateBias, 
   generateSignal,
-  calculateTradingZones
+  calculateTradingZones,
+  calculateProZones
 } from './services/marketSimulator';
 import { getAnalystInsight } from './services/geminiService';
 
@@ -27,7 +29,8 @@ import PtaxPanel from './components/PtaxPanel';
 import SettingsPanel from './components/SettingsPanel';
 import ChartUploadPanel from './components/ChartUploadPanel';
 import RealTimeAnalysis from './components/RealTimeAnalysis';
-import RealTimeChart from './components/RealTimeChart'; // Import new chart
+import RealTimeChart from './components/RealTimeChart';
+import LiveMarketSetup from './components/LiveMarketSetup'; // New import
 import { BrainCircuit, Play, Square, Info } from 'lucide-react';
 
 // Helper for time formatting
@@ -38,12 +41,13 @@ const formatTime = (date: Date) => {
 const App: React.FC = () => {
   // State
   const [marketData, setMarketData] = useState<MarketData | null>(null);
-  const [priceHistory, setPriceHistory] = useState<{time: string, price: number}[]>([]); // New history state
+  const [priceHistory, setPriceHistory] = useState<{time: string, price: number}[]>([]); 
   const [bias, setBias] = useState<MarketBias>(MarketBias.NEUTRAL);
   const [signal, setSignal] = useState<TradeSignal | null>(null);
   const [ptaxZones, setPtaxZones] = useState<PtaxZone[]>(MOCK_PTAX_ZONES);
   const [settings, setSettings] = useState<UserSettings>(INITIAL_SETTINGS);
   const [tradingZones, setTradingZones] = useState<TradingZones | null>(null);
+  const [liveParams, setLiveParams] = useState<LiveSetupParams | null>(null); // State for manual inputs
   
   const [riskStatus, setRiskStatus] = useState<RiskStatus>({
     currentPnL: 0,
@@ -60,7 +64,7 @@ const App: React.FC = () => {
   useEffect(() => {
     const initialData = generateMarketData(null, settings.asset);
     setMarketData(initialData);
-    setPriceHistory([{ time: formatTime(new Date()), price: initialData.price }]); // Init history
+    setPriceHistory([{ time: formatTime(new Date()), price: initialData.price }]); 
     setTradingZones(calculateTradingZones(initialData, MarketBias.NEUTRAL));
     
     const base = initialData.price;
@@ -71,6 +75,37 @@ const App: React.FC = () => {
     ]);
   }, [settings.asset]);
 
+  // Handle Manual Live Data Analysis
+  const handleLiveAnalysis = (params: LiveSetupParams) => {
+      setLiveParams(params);
+      
+      // Force update market data to match manual input immediately
+      const newData: MarketData = {
+          price: params.current,
+          open: params.open,
+          high: params.high,
+          low: params.low,
+          vwap: params.vwap,
+          volume: 10000,
+          aggressionBuy: params.current > params.vwap ? 60 : 40,
+          aggressionSell: params.current < params.vwap ? 60 : 40,
+          lastUpdate: Date.now()
+      };
+      
+      setMarketData(newData);
+      
+      // Use Pro Zones calculation
+      const newZones = calculateProZones(params);
+      setTradingZones(newZones);
+      setBias(params.current > params.vwap ? MarketBias.BULLISH : MarketBias.BEARISH);
+      
+      // Add to history
+      setPriceHistory(prev => [...prev, { time: formatTime(new Date()), price: params.current }].slice(-30));
+      
+      // Start simulation around these points
+      setIsRunning(true);
+  };
+
   // Main Simulation Loop
   useEffect(() => {
     let interval: ReturnType<typeof setInterval> | undefined;
@@ -79,45 +114,45 @@ const App: React.FC = () => {
       interval = setInterval(() => {
         setMarketData(prev => {
           if (!prev) return null;
-          const newData = generateMarketData(prev, settings.asset);
+          
+          // If we have live params, generate data AROUND those params (Simulated Reality)
+          const newData = generateMarketData(prev, settings.asset, liveParams || undefined);
           
           // Update Bias
           const newBias = calculateBias(newData);
           setBias(newBias);
 
-          // Update Trading Zones
-          setTradingZones(calculateTradingZones(newData, newBias));
+          // Update Trading Zones (Keep zones fixed if manual, or dynamic if auto)
+          if (!liveParams) {
+             setTradingZones(calculateTradingZones(newData, newBias));
+          }
 
           // Update History
           setPriceHistory(prevHist => {
              const newHist = [...prevHist, { time: formatTime(new Date()), price: newData.price }];
-             if (newHist.length > 30) return newHist.slice(1); // Keep last 30 points
+             if (newHist.length > 50) return newHist.slice(1); 
              return newHist;
           });
 
-          // Generate Signal (if none active)
+          // Generate Signal logic...
           if (!signal) {
              const newSignal = generateSignal(newData, newBias, settings.maxRiskPerTrade, settings.contracts, settings.asset);
              if (newSignal) setSignal(newSignal);
           } else {
-             // Check if signal invalid (stop or target hit sim)
              if (newData.price >= signal.targetFinal || newData.price <= signal.stopLoss) {
-                // Determine simulated result for the demo
-                const isWin = newData.price >= signal.targetFinal && signal.type === 'COMPRA' || newData.price <= signal.targetFinal && signal.type === 'VENDA';
-                // Reset signal after hit
                 setSignal(null);
              }
           }
 
           return newData;
         });
-      }, 1500); // 1.5s tick simulation
+      }, 1500); 
     }
 
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [isRunning, settings, signal, riskStatus.isBlocked]);
+  }, [isRunning, settings, signal, riskStatus.isBlocked, liveParams]);
 
   // Check Risk
   useEffect(() => {
@@ -165,10 +200,13 @@ const App: React.FC = () => {
                 onClick={toggleSimulation}
                 className={`flex items-center gap-2 px-6 py-2 rounded font-bold transition-all ${isRunning ? 'bg-profit-red hover:bg-red-700' : 'bg-profit-green hover:bg-green-700'}`}
             >
-                {isRunning ? <><Square className="w-4 h-4 fill-current" /> PAUSAR SIMULAÇÃO</> : <><Play className="w-4 h-4 fill-current" /> INICIAR ANÁLISE</>}
+                {isRunning ? <><Square className="w-4 h-4 fill-current" /> PAUSAR FLUXO</> : <><Play className="w-4 h-4 fill-current" /> SIMULAR MERCADO</>}
             </button>
         </div>
       </header>
+
+      {/* NEW: Live Market Setup Area */}
+      <LiveMarketSetup onAnalyze={handleLiveAnalysis} />
 
       {/* Main Grid */}
       <MarketOverview data={marketData} bias={bias} />

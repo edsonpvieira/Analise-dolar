@@ -1,4 +1,4 @@
-import { MarketData, MarketBias, TradeSignal, SignalType, AssetType, TradingZones } from "../types";
+import { MarketData, MarketBias, TradeSignal, SignalType, AssetType, TradingZones, LiveSetupParams } from "../types";
 import { ASSET_CONFIG } from "../constants";
 
 // Helper to round to nearest tick
@@ -6,9 +6,26 @@ const roundTick = (val: number, tick: number = 0.5) => {
   return Math.round(val / tick) * tick;
 };
 
-export const generateMarketData = (prev: MarketData | null, asset: AssetType): MarketData => {
+export const generateMarketData = (prev: MarketData | null, asset: AssetType, manualOverride?: LiveSetupParams): MarketData => {
+  if (manualOverride) {
+      // If manual params exist, generate noise around the current manual price
+      const basePrice = manualOverride.current;
+      const noise = (Math.random() - 0.5) * 3; // Small fluctuation
+      return {
+          price: roundTick(basePrice + noise),
+          open: manualOverride.open,
+          high: Math.max(manualOverride.high, basePrice + noise),
+          low: Math.min(manualOverride.low, basePrice + noise),
+          vwap: manualOverride.vwap,
+          volume: prev ? prev.volume + 100 : 5000,
+          aggressionBuy: 50 + (Math.random() * 10 - 5),
+          aggressionSell: 50 + (Math.random() * 10 - 5),
+          lastUpdate: Date.now()
+      };
+  }
+
   if (!prev) {
-    // Initial State
+    // Initial State (Simulation Default)
     const startPrice = asset === AssetType.WDO ? 5000 : 5000; 
     return {
       price: startPrice,
@@ -57,31 +74,97 @@ export const generateMarketData = (prev: MarketData | null, asset: AssetType): M
 
 export const calculateBias = (data: MarketData): MarketBias => {
   const distToVwap = data.price - data.vwap;
-  const flowStrong = Math.abs(data.aggressionBuy - data.aggressionSell) > 10; // >10% diff
-
-  if (data.price > data.vwap && data.aggressionBuy > 55) return MarketBias.BULLISH;
-  if (data.price < data.vwap && data.aggressionSell > 55) return MarketBias.BEARISH;
+  
+  // Strong Trend conditions
+  if (data.price > data.vwap && data.price > data.open) return MarketBias.BULLISH;
+  if (data.price < data.vwap && data.price < data.open) return MarketBias.BEARISH;
   
   if (Math.abs(distToVwap) < 3) return MarketBias.NEUTRAL; // Too close to VWAP
   
   return MarketBias.NEUTRAL;
 };
 
+// New Professional Calculation based on Manual Inputs
+export const calculateProZones = (params: LiveSetupParams): TradingZones => {
+    const { open, high, low, vwap, current } = params;
+    
+    const range = high - low;
+    const fib38 = range * 0.382;
+    const fib61 = range * 0.618;
+
+    let buyRegion, sellRegion, context;
+
+    // Analyze Context relative to VWAP and Open (The "Power Zone")
+    const isBullish = current > vwap;
+    
+    if (isBullish) {
+        // UPTREND SCENARIO
+        // Buy Zone: The Pullback to VWAP or Fib 38% from High
+        buyRegion = { 
+            min: vwap - 2, 
+            max: vwap + 2, 
+            strength: 'ALTA' 
+        };
+        // Sell Zone: Resistance at High or Expansion
+        sellRegion = { 
+            min: high - 2, 
+            max: high + 5, 
+            strength: 'MÉDIA' 
+        };
+        context = "Cenário Comprador: Preço acima da VWAP. Aguarde Pullback para comprar.";
+
+        if (current > high) {
+             context = "Rompimento de Máxima: Cuidado com compras esticadas. Espere teste no topo anterior.";
+             buyRegion = { min: high - 2, max: high, strength: 'MÉDIA' };
+             sellRegion = { min: high + fib38, max: high + fib61, strength: 'BAIXA' }; // Counter trend
+        }
+
+    } else {
+        // DOWNTREND SCENARIO
+        // Sell Zone: The Pullback to VWAP
+        sellRegion = { 
+            min: vwap - 2, 
+            max: vwap + 2, 
+            strength: 'ALTA' 
+        };
+        // Buy Zone: Support at Low
+        buyRegion = { 
+            min: low - 5, 
+            max: low + 2, 
+            strength: 'MÉDIA' 
+        };
+        context = "Cenário Vendedor: Preço abaixo da VWAP. Venda repiques.";
+        
+        if (current < low) {
+            context = "Rompimento de Mínima: Tendência forte. Não compre contra o fluxo.";
+            sellRegion = { min: low, max: low + 2, strength: 'MÉDIA' };
+            buyRegion = { min: low - fib61, max: low - fib38, strength: 'BAIXA' }; // Counter trend
+       }
+    }
+
+    // Adjust for Consolidation (Inside Opening Range)
+    if (current > low && current < high && range < 20) {
+        context = "Consolidação Estreita (Range < 20pts). Opere apenas extremos.";
+        buyRegion = { min: low, max: low + 3, strength: 'ALTA' };
+        sellRegion = { min: high - 3, max: high, strength: 'ALTA' };
+    }
+
+    return { buyRegion, sellRegion, trendContext: context };
+};
+
 export const calculateTradingZones = (data: MarketData, bias: MarketBias): TradingZones => {
+  // Fallback for simulation mode only
   let buyRegion, sellRegion, context;
 
   if (bias === MarketBias.BULLISH) {
-    // Bullish: Buy near VWAP (Pullback), Sell near Highs (Breakout target)
     buyRegion = { min: data.vwap - 2, max: data.vwap + 2, strength: 'ALTA' as const };
     sellRegion = { min: data.high, max: data.high + 5, strength: 'MÉDIA' as const };
     context = "Tendência de Alta - Priorize Pullbacks na VWAP";
   } else if (bias === MarketBias.BEARISH) {
-    // Bearish: Sell near VWAP (Pullback), Buy near Lows (Target)
     sellRegion = { min: data.vwap - 2, max: data.vwap + 2, strength: 'ALTA' as const };
     buyRegion = { min: data.low - 5, max: data.low, strength: 'MÉDIA' as const };
     context = "Tendência de Baixa - Venda repiques na VWAP";
   } else {
-    // Neutral: Buy Lows, Sell Highs (Range)
     buyRegion = { min: data.low, max: data.low + 3, strength: 'MÉDIA' as const };
     sellRegion = { min: data.high - 3, max: data.high, strength: 'MÉDIA' as const };
     context = "Mercado Lateral - Operar Extremos";
